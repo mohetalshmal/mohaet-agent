@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أسطول محيط الشمال</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --primary:#2c3e50; --accent:#3498db; --danger:#e74c3c; --success:#2ecc71; --warning:#f1c40f; --urgent:#e67e22; --bg:#f5f6fa; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; }
+  .container { max-width: 1300px; margin: 0 auto; }
+  h1 { color: var(--primary); text-align: center; }
+  h2 { color: var(--primary); margin-top: 0; }
+  .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,.08); margin-bottom: 20px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 15px; }
+  input, select, button { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: inherit; }
+  button { background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: bold; }
+  button:hover { filter: brightness(.92); }
+  button:disabled { opacity: .6; cursor: default; }
+  .btn-secondary { background: #7f8c8d; }
+  .btn-danger { background: var(--danger); }
+  .btn-green { background: #27ae60; padding: 12px 25px; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+  th, td { padding: 10px; border: 1px solid #ddd; text-align: right; vertical-align: top; }
+  th { background: var(--primary); color: #fff; }
+  tr:nth-child(even) { background: #f9f9f9; }
+  .badge { padding: 3px 6px; border-radius: 4px; font-size: 11px; color: #fff; font-weight: bold; display: inline-block; margin-top: 3px; }
+  .bg-danger { background: var(--danger); }
+  .bg-urgent { background: var(--urgent); }
+  .bg-warning { background: var(--warning); color: #333; }
+  .bg-success { background: var(--success); }
+  .muted { color: #999; }
+  .loading { text-align: center; font-style: italic; color: #7f8c8d; display: none; }
+  .doc-link { color: var(--accent); text-decoration: none; font-weight: bold; }
+  .actions button { margin: 2px; padding: 5px 8px; font-size: 12px; }
+  .hint { font-size: 12px; color: #7f8c8d; margin: 4px 0 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🚛 أسطول محيط الشمال</h1>
+
+  <div class="card" style="background:#ebf5fb; border:1px solid var(--accent); text-align:center;">
+    <h3 style="margin-top:0">📥 رفع الأسطول الأولي</h3>
+    <p class="hint">يرفع الشاحنات الـ 24 دفعة واحدة. الشاحنات الموجودة مسبقاً بنفس رقم اللوحة تُتجاهل، فلا تتكرر عند الضغط مرتين.</p>
+    <button id="bulk-inject-btn" class="btn-green">🚀 رفع الـ 24 شاحنة إلى السحابة</button>
+  </div>
+
+  <div class="card">
+    <h2 id="form-title">إضافة شاحنة جديدة</h2>
+    <p class="hint">التواريخ بالهجري بصيغة سنة/شهر/يوم، مثال: 1451/05/16</p>
+    <form id="vehicle-form">
+      <input type="hidden" id="vehicle-id">
+      <div class="form-grid">
+        <input type="text" id="plate-number" placeholder="رقم اللوحة" required>
+        <input type="text" id="vehicle-brand" placeholder="الماركة">
+        <input type="text" id="vehicle-model" placeholder="الطراز">
+        <input type="text" id="license-expiry" placeholder="انتهاء الرخصة هـ" pattern="\d{4}/\d{1,2}/\d{1,2}">
+        <input type="text" id="insurance-expiry" placeholder="انتهاء التأمين هـ" pattern="\d{4}/\d{1,2}/\d{1,2}">
+        <input type="text" id="inspection-expiry" placeholder="انتهاء الفحص هـ" pattern="\d{4}/\d{1,2}/\d{1,2}">
+        <input type="text" id="operation-card-expiry" placeholder="انتهاء كرت التشغيل هـ" pattern="\d{4}/\d{1,2}/\d{1,2}">
+        <select id="vehicle-status">
+          <option value="نشطة">نشطة</option>
+          <option value="صيانة">في الصيانة</option>
+          <option value="متوقفة">متوقفة</option>
+        </select>
+        <input type="file" id="vehicle-document" accept="image/*,application/pdf">
+      </div>
+      <button type="submit" id="submit-btn">حفظ الشاحنة</button>
+      <button type="button" id="cancel-btn" class="btn-secondary" style="display:none">إلغاء التعديل</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>قائمة الأسطول والتنبيهات</h2>
+    <p class="hint">عاجل: 30 يوماً أو أقل. متابعة: 60 يوماً، ورخصة السير 90 يوماً.</p>
+    <div id="loading-text" class="loading">جاري المزامنة مع السحاب...</div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>اللوحة</th><th>الماركة</th><th>الطراز</th>
+            <th>انتهاء الرخصة</th><th>انتهاء التأمين</th><th>انتهاء الفحص</th><th>انتهاء كرت التشغيل</th>
+            <th>المستند</th><th>الحالة</th><th>إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="vehicle-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ضع رابط مشروع Supabase الخاص بك (يبدأ بـ https://) ومفتاحه العام
+  const SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_sM05zIPfuM6sNPlH_gFcyQ_jbdP43Na';
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const THRESHOLDS = { urgent: 30, follow: 60, license: 90 };
+
+  const rawData = [
+    {plate:"أ ع ص 8071",brand:"فولفو",model:"FH",lic:"1451/05/16",ins:"1449/05/25",insp:"1449/05/25",op:"1449/05/07"},
+    {plate:"أ ع س 5392",brand:"فولفو",model:"رأس شاحنة",lic:"1451/03/14",ins:"1449/03/20",insp:"1449/03/20",op:"1449/03/27"},
+    {plate:"أ ع أ 4809",brand:"فولفو",model:"رأس تريلا",lic:"1450/01/01",ins:"1449/01/09",insp:"1449/01/09",op:"1449/01/12"},
+    {plate:"أ ع أ 4808",brand:"فولفو",model:"رأس تريلا",lic:"1451/01/01",ins:"1449/01/09",insp:"1449/01/09",op:"1449/01/12"},
+    {plate:"أ ع أ 4807",brand:"فولفو",model:"رأس تريلا",lic:"1451/01/01",ins:"1449/01/09",insp:"1449/01/08",op:"1449/01/12"},
+    {plate:"أ ط ن 4872",brand:"فولفو",model:"رأس",lic:"1450/09/16",ins:"1448/09/18",insp:"1448/09/18",op:"1448/09/29"},
+    {plate:"أ ص س 1563",brand:"مرسيدس",model:"رأس تريلا",lic:"1449/02/11",ins:"1448/09/16",insp:"1448/09/17",op:"1448/09/18"},
+    {plate:"أ ط ق 8917",brand:"فولفو",model:"FH",lic:"1450/07/29",ins:"1448/08/08",insp:"1448/08/09",op:"1448/08/12"},
+    {plate:"أ ط د 9262",brand:"فولفو",model:"FH",lic:"1450/07/16",ins:"1448/07/21",insp:"1448/07/21",op:"1448/07/29"},
+    {plate:"أ ط ط 7474",brand:"فولفو",model:"FH",lic:"1450/06/13",ins:"1448/06/20",insp:"1448/06/22",op:"1448/06/24"},
+    {plate:"أ ص ل 4685",brand:"فولفو",model:"رأس",lic:"1449/05/04",ins:"1448/04/22",insp:"1448/05/12",op:"1449/04/26"},
+    {plate:"أ ط أ 7298",brand:"فولفو",model:"رأس تريلا",lic:"1450/02/23",ins:"1449/03/06",insp:"1448/02/29",op:"1449/03/07"},
+    {plate:"أ ص ه 3823",brand:"فولفو",model:"رأس",lic:"1449/11/21",ins:"1448/11/12",insp:"1448/12/06",op:"1448/12/06"},
+    {plate:"أ ص ه 3822",brand:"فولفو",model:"رأس",lic:"1449/11/21",ins:"1448/11/13",insp:"1448/12/07",op:"1448/12/06"},
+    {plate:"أ ص ل 4336",brand:"مرسيدس",model:"رأس",lic:"1449/05/08",ins:"1448/05/13",insp:"1448/05/09",op:"1449/05/07"},
+    {plate:"أ ص ع 1975",brand:"فولفو",model:"رأس تريلا",lic:"1449/05/05",ins:"1449/06/04",insp:"1449/05/13",op:"1449/05/07"},
+    {plate:"أ ص ح 1887",brand:"فولفو",model:"رأس",lic:"1448/12/27",ins:"1449/02/05",insp:"1449/02/14",op:"1449/04/17"},
+    {plate:"أ ص د 6958",brand:"مرسيدس",model:"رأس تريلا",lic:"1448/11/29",ins:"1449/01/08",insp:"1449/02/01",op:"1449/04/14"},
+    {plate:"أ س ن 5590",brand:"فولفو",model:"رأس",lic:"1448/07/02",ins:"1448/07/30",insp:"1448/07/27",op:"1449/04/27"},
+    {plate:"أ د ه 8868",brand:"مرسيدس",model:"رأس",lic:"1448/10/13",ins:"1449/02/01",insp:"1449/04/29",op:"1449/04/29"},
+    {plate:"أ س ل 4737",brand:"مرسيدس",model:"رأس تريلا",lic:"1451/04/02",ins:"1448/04/26",insp:"1448/04/17",op:"1449/04/14"},
+    {plate:"أ ح و 7029",brand:"مرسيدس",model:"رأس",lic:"1450/08/03",ins:"1448/09/15",insp:"1448/09/04",op:"1449/04/14"},
+    {plate:"أ ح و 7026",brand:"مرسيدس",model:"رأس",lic:"1450/08/03",ins:"1448/09/04",insp:"1448/09/04",op:"1449/04/14"},
+    {plate:"أ د ع 5307",brand:"مرسيدس",model:"رأس",lic:"1450/03/02",ins:"1448/05/07",insp:"1449/03/15",op:"1449/04/14"}
+  ];
+
+  let vehicles = [];
+
+  const $ = id => document.getElementById(id);
+  const form = $('vehicle-form');
+  const tableBody = $('vehicle-table-body');
+  const loadingEl = $('loading-text');
+  const injectBtn = $('bulk-inject-btn');
+  const submitBtn = $('submit-btn');
+  const cancelBtn = $('cancel-btn');
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // تحويل التاريخ الهجري إلى رقم يوم (تقويم حسابي، قد يختلف عن رؤية الهلال بيوم)
+  function hijriToJD(str) {
+    const p = String(str || '').split('/').map(Number);
+    if (p.length !== 3 || p.some(isNaN)) return null;
+    const [y, m, d] = p;
+    return d + Math.ceil(29.5 * (m - 1)) + (y - 1) * 354 + Math.floor((3 + 11 * y) / 30) + 1948439.5 - 1;
+  }
+
+  function todayJD() {
+    const n = new Date();
+    const utcMidnight = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
+    return utcMidnight / 86400000 + 2440587.5;
+  }
+
+  function daysLeft(str) {
+    const jd = hijriToJD(str);
+    return jd === null ? null : Math.floor(jd) - Math.floor(todayJD());
+  }
+
+  function badge(str, warnDays) {
+    if (!str) return '<span class="muted">-</span>';
+    const left = daysLeft(str);
+    if (left === null) return `<div>${esc(str)}</div><span class="badge bg-warning">تاريخ غير صالح</span>`;
+    let cls, label;
+    if (left < 0) { cls = 'bg-danger'; label = 'منتهي'; }
+    else if (left <= THRESHOLDS.urgent) { cls = 'bg-urgent'; label = `عاجل: ${left} يوم`; }
+    else if (left <= warnDays) { cls = 'bg-warning'; label = `متابعة: ${left} يوم`; }
+    else { cls = 'bg-success'; label = `ساري: ${left} يوم`; }
+    return `<div>${esc(str)}</div><span class="badge ${cls}">${label}</span>`;
+  }
+
+  function setLoading(on) { loadingEl.style.display = on ? 'block' : 'none'; }
+
+  async function fetchVehicles() {
+    setLoading(true);
+    const { data, error } = await db.from('vehicles').select('*').order('created_at', { ascending: false });
+    setLoading(false);
+    if (error) { alert('خطأ أثناء جلب البيانات: ' + error.message); return; }
+    vehicles = data || [];
+    renderTable();
+  }
+
+  function renderTable() {
+    tableBody.innerHTML = vehicles.map(v => {
+      const doc = v.document_url ? `<a class="doc-link" href="${esc(v.document_url)}" target="_blank">📄 عرض</a>` : '-';
+      return `
+        <tr>
+          <td><strong>${esc(v.plate)}</strong></td>
+          <td>${esc(v.brand) || '-'}</td>
+          <td>${esc(v.model) || '-'}</td>
+          <td>${badge(v.license_expiry, THRESHOLDS.license)}</td>
+          <td>${badge(v.expiry, THRESHOLDS.follow)}</td>
+          <td>${badge(v.inspection_expiry, THRESHOLDS.follow)}</td>
+          <td>${badge(v.operation_card_expiry, THRESHOLDS.follow)}</td>
+          <td>${doc}</td>
+          <td>${esc(v.status)}</td>
+          <td class="actions">
+            <button onclick="editVehicle('${v.id}')">✏️</button>
+            <button class="btn-danger" onclick="deleteVehicle('${v.id}')">🗑️</button>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  function resetForm() {
+    form.reset();
+    $('vehicle-id').value = '';
+    $('form-title').innerText = 'إضافة شاحنة جديدة';
+    submitBtn.innerText = 'حفظ الشاحنة';
+    cancelBtn.style.display = 'none';
+  }
+
+  window.editVehicle = function (id) {
+    const v = vehicles.find(x => x.id === id);
+    if (!v) return;
+    $('vehicle-id').value = v.id;
+    $('plate-number').value = v.plate || '';
+    $('vehicle-brand').value = v.brand || '';
+    $('vehicle-model').value = v.model || '';
+    $('license-expiry').value = v.license_expiry || '';
+    $('insurance-expiry').value = v.expiry || '';
+    $('inspection-expiry').value = v.inspection_expiry || '';
+    $('operation-card-expiry').value = v.operation_card_expiry || '';
+    $('vehicle-status').value = v.status || 'نشطة';
+    $('form-title').innerText = 'تعديل بيانات الشاحنة';
+    submitBtn.innerText = 'تحديث البيانات';
+    cancelBtn.style.display = 'inline-block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  window.deleteVehicle = async function (id) {
+    const v = vehicles.find(x => x.id === id);
+    if (!confirm(`حذف الشاحنة ${v ? v.plate : ''} نهائياً؟`)) return;
+    const { error } = await db.from('vehicles').delete().eq('id', id);
+    if (error) { alert('خطأ أثناء الحذف: ' + error.message); return; }
+    fetchVehicles();
+  };
+
+  cancelBtn.addEventListener('click', resetForm);
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    setLoading(true);
+    try {
+      let documentUrl = null;
+      const file = $('vehicle-document').files[0];
+      if (file) {
+        const fileName = `${Date.now()}.${file.name.split('.').pop()}`;
+        const { error: upErr } = await db.storage.from('vehicle_documents').upload(fileName, file);
+        if (upErr) throw upErr;
+        documentUrl = db.storage.from('vehicle_documents').getPublicUrl(fileName).data.publicUrl;
+      }
+
+      const row = {
+        plate: $('plate-number').value.trim(),
+        brand: $('vehicle-brand').value.trim(),
+        model: $('vehicle-model').value.trim(),
+        license_expiry: $('license-expiry').value.trim(),
+        expiry: $('insurance-expiry').value.trim(),
+        inspection_expiry: $('inspection-expiry').value.trim(),
+        operation_card_expiry: $('operation-card-expiry').value.trim(),
+        status: $('vehicle-status').value,
+        ...(documentUrl && { document_url: documentUrl })
+      };
+
+      const id = $('vehicle-id').value;
+      const res = id
+        ? await db.from('vehicles').update(row).eq('id', id)
+        : await db.from('vehicles').insert([row]);
+      if (res.error) throw res.error;
+
+      resetForm();
+      fetchVehicles();
+    } catch (err) {
+      alert('خطأ أثناء الحفظ: ' + err.message);
+    } finally {
+      submitBtn.disabled = false;
+      setLoading(false);
+    }
+  });
+
+  injectBtn.addEventListener('click', async () => {
+    if (!confirm(`رفع ${rawData.length} شاحنة؟ المكرر برقم اللوحة يُتجاهل.`)) return;
+    injectBtn.disabled = true;
+    injectBtn.innerText = 'جاري الرفع...';
+    const rows = rawData.map(i => ({
+      plate: i.plate, brand: i.brand, model: i.model,
+      license_expiry: i.lic, expiry: i.ins, inspection_expiry: i.insp,
+      operation_card_expiry: i.op, status: 'نشطة'
+    }));
+    const { error } = await db.from('vehicles').upsert(rows, { onConflict: 'plate', ignoreDuplicates: true });
+    injectBtn.disabled = false;
+    injectBtn.innerText = '🚀 رفع الـ 24 شاحنة إلى السحابة';
+    if (error) { alert('حدث خطأ أثناء الرفع: ' + error.message); return; }
+    alert('تم رفع الشاحنات بنجاح.');
+    fetchVehicles();
+  });
+
+  fetchVehicles();
+</script>
+</body>
+</html>
